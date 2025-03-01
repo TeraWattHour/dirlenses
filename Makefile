@@ -1,7 +1,7 @@
 all: run
 
 compile:
-	gcc -o main main.c -lncurses
+	gcc -o dirlenses main.c -lncurses
 
 run: compile
-	./main
+	./dirlenses
