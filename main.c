@@ -38,37 +38,37 @@ char *human_readable_kb(int kb) {
   return buffer;
 }
 
-struct finfo *get_disk_usage_stats(int *n) {
+int get_disk_usage_stats(struct finfo **files) {
   FILE *f = popen("ls | wc -l 2>/dev/null", "r");
   if (!f) ERROR("couldn't count files in directory\n");
 
   char buffer[1024];
   if (!fgets(buffer, sizeof(buffer), f)) ERROR("couldn't read from pipe\n");
-  *n = atoi(buffer) + 2;
+  int n = atoi(buffer) + 2;
   pclose(f);
 
-  struct finfo *files = malloc(*n * sizeof(struct finfo));
+  *files = realloc(*files, n * sizeof(struct finfo));
   if (!files) ERROR("malloc failed\n");
 
-  files[0] = (struct finfo){"..", 0, "", true};
-  files[1] = (struct finfo){".", 0, "", true};
+  (*files)[0] = (struct finfo){"..", 0, "", true};
+  (*files)[1] = (struct finfo){".", 0, "", true};
 
-  if (*n == 2) {
-    files = realloc(files, 3 * sizeof(struct finfo));
-    files[2] = (struct finfo){"(empty)", 0, "", false};
-    *n = 3;
-    return files;
+  if (n == 2) {
+    *files = realloc(*files, 3 * sizeof(struct finfo));
+    (*files)[2] = (struct finfo){"(empty)", 0, "", false};
+
+    return 3;
   }
 
   f = popen("du -sk -- * 2>/dev/null", "r");
   if (!f) ERROR("couldn't get disk usage stats\n");
 
-  for (int i = 2; i < *n; i++) {
-    if (fscanf(f, "%d\t%255[^\n]", &files[i].size, buffer) != 2)
+  for (int i = 2; i < n; i++) {
+    if (fscanf(f, "%d\t%255[^\n]", &(*files)[i].size, buffer) != 2)
       ERROR("couldn't read file sizes\n");
 
-    files[i].name = strdup(buffer);
-    files[i].human_size = human_readable_kb(files[i].size);
+    (*files)[i].name = strdup(buffer);
+    (*files)[i].human_size = human_readable_kb((*files)[i].size);
   }
 
   pclose(f);
@@ -76,18 +76,18 @@ struct finfo *get_disk_usage_stats(int *n) {
   f = popen("ls -l 2>/dev/null", "r");
   if (!f) ERROR("couldn't get file types\n");
 
-  for (int i = -1; i < *n - 2; i++) {
+  for (int i = -1; i < n - 2; i++) {
     if (!fgets(buffer, sizeof(buffer), f)) ERROR("couldn't read from pipe\n");
     if (i == -1) continue;
 
-    files[i + 2].is_dir = buffer[0] == 'd';
+    (*files)[i + 2].is_dir = buffer[0] == 'd';
   }
 
   pclose(f);
 
-  qsort(files + 2, *n - 2, sizeof(struct finfo), sorting);
+  qsort(*files + 2, n - 2, sizeof(struct finfo), sorting);
 
-  return files;
+  return n;
 }
 
 int main() {
@@ -101,8 +101,8 @@ int main() {
   init_pair(2, COLOR_WHITE, COLOR_BLACK);  // Normal
   init_pair(3, COLOR_BLUE, COLOR_WHITE);   // Header
 
-  int n;
-  struct finfo *files = get_disk_usage_stats(&n);
+  struct finfo *files = NULL;
+  int n = get_disk_usage_stats(&files);
 
   int focused = 0;
   int offset = 0;
@@ -144,9 +144,7 @@ int main() {
       case 10:
         if (files[focused].is_dir) {
           chdir(files[focused].name);
-          free(files);
-          clear();
-          files = get_disk_usage_stats(&n);
+          n = get_disk_usage_stats(&files);
           focused = 0;
           offset = 0;
         }
