@@ -19,8 +19,8 @@ struct finfo {
 };
 
 int sorting(const void *a, const void *b) {
-  struct finfo *lhs = a;
-  struct finfo *rhs = b;
+  struct finfo *lhs = (struct finfo *)a;
+  struct finfo *rhs = (struct finfo *)b;
 
   return rhs->size - lhs->size;
 }
