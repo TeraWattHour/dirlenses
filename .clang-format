@@ -1,0 +1,10 @@
+BasedOnStyle: LLVM
+ColumnLimit: 0
+IndentWidth: 2
+UseTab: Never
+BreakBeforeBinaryOperators: All
+AlignOperands: false
+AlignConsecutiveAssignments: false
+PenaltyBreakBeforeFirstCallParameter: 100
+BinPackParameters: false
+AllowShortFunctionsOnASingleLine: None
