@@ -43,7 +43,7 @@ void get_files() {
   if (!dir)
     ERROR("couldn't open the current directory\n");
 
-  int n = 1;
+  n_files = 1;
   int cap = 2;
 
   files = realloc(files, cap * sizeof(struct finfo));
@@ -62,43 +62,42 @@ void get_files() {
     if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
       continue;
 
-    if (n == cap) {
+    if (n_files == cap) {
       cap *= 2;
       files = realloc(files, cap * sizeof(struct finfo));
       if (!files)
         ERROR("malloc failed\n");
     }
 
-    files[n].name = strdup(entry->d_name);
-    files[n].is_dir = entry->d_type == DT_DIR;
+    files[n_files].name = strdup(entry->d_name);
+    files[n_files].is_dir = entry->d_type == DT_DIR;
     if (entry->d_type == DT_DIR) {
-      files[n].size = 0;
-      files[n].human_size = "---";
+      files[n_files].size = 0;
+      files[n_files].human_size = "---";
     } else {
       if (stat(entry->d_name, st) != 0)
         ERROR("couldn't get file stats, errno: %d\n", errno);
 
       int kb = st->st_blocks / 2;
-      files[n].size = kb;
-      files[n].human_size = human_readable_kb(kb);
+      files[n_files].size = kb;
+      files[n_files].human_size = human_readable_kb(kb);
     }
 
-    n++;
+    n_files++;
   }
 
   closedir(dir);
   free(st);
 
   // folder is actually empty, preserve the "(empty)" entry
-  if (n == 1) {
+  if (n_files == 1) {
     n_files = 2;
     dir_empty = true;
     return;
   };
 
-  qsort(files + 2, n - 2, sizeof(struct finfo), finfo_by_name);
+  qsort(files + 2, n_files - 2, sizeof(struct finfo), finfo_by_name);
 
-  n_files = n;
   return;
 }
 
