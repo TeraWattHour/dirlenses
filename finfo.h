@@ -2,7 +2,6 @@
 #define FINFO_H
 
 #include <stdbool.h>
-#include <string.h>
 
 struct finfo {
   char *name;

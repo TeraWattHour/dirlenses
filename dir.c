@@ -1,5 +1,12 @@
 #include "dir.h"
+#include "error.h"
 
+#include <stdlib.h>
+#include <string.h>
+#include <dirent.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <stdio.h>
 
 char *human_readable_kb(long long kb) {
   char *buffer = malloc(16);

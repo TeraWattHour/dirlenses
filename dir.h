@@ -1,9 +1,5 @@
 #ifndef DIR_H
 #define DIR_H
-#include <dirent.h>
-#include <errno.h>
-#include <sys/stat.h>
-#include <stdio.h>
 
 #include "cache.h"
 

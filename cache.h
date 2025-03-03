@@ -1,13 +1,10 @@
 #ifndef CACHE_H
 #define CACHE_H
 
-#include <stdlib.h>
-#include <string.h>
 #include <pthread.h>
 
 #include "finfo.h"
 #include "dir.h"
-#include "error.h"
 
 struct cache {
   struct dir **v;

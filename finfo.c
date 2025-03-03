@@ -1,5 +1,7 @@
 #include "finfo.h"
 
+#include <string.h>
+
 int finfo_by_size(const void *a, const void *b) {
   const struct finfo *lhs = a;
   const struct finfo *rhs = b;
