@@ -1,5 +1,11 @@
 #include "cache.h"
 
+#include "error.h"
+
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+
 static struct cache c;
 
 unsigned long hash(const char *str);
@@ -43,7 +49,7 @@ struct dir *cache_find_dir(const char *path) {
 
   for (int i = 0; i < c.cap; i++) {
     const unsigned long idx = (destination + i) % c.cap;
-    if (c.v[idx] && strcmp(c.v[idx]->name, path) != 0) return c.v[idx];
+    if (c.v[idx] && strcmp(c.v[idx]->name, path) == 0) return c.v[idx];
   }
 
   return NULL;

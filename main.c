@@ -1,17 +1,31 @@
+#include "cache.h"
+#include "finfo.h"
+
 #include <dirent.h>
 #include <ncurses.h>
-#include <pthread.h>
 #include <limits.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <string.h>
 
-#include "finfo.h"
-#include "cache.h"
 
 char *cwd() {
   char cwd[PATH_MAX + 1];
   getcwd(cwd, sizeof(cwd));
   return strdup(cwd);
+}
+
+void controls(int w, int h) {
+  int offset = 0;
+
+#define KEY(key, desc) \
+  ({ \
+    attron(COLOR_PAIR(4)); mvprintw(h + 1, offset + 1, " %s ", key); offset += strlen(key) + 3; attroff(COLOR_PAIR(4)); \
+    attron(COLOR_PAIR(2)); mvprintw(h + 1, offset + 1, "%s", desc); offset += strlen(desc) + 2; attroff(COLOR_PAIR(2)); \
+  })
+
+  KEY("s", "scan");
+  KEY("q", "quit");
 }
 
 int main() {
@@ -32,6 +46,7 @@ int main() {
   init_pair(1, COLOR_BLACK, COLOR_WHITE); // Highlighted
   init_pair(2, COLOR_WHITE, COLOR_BLACK); // Normal
   init_pair(3, COLOR_BLUE, COLOR_WHITE);  // Header
+  init_pair(4, COLOR_BLACK, COLOR_CYAN);  // Key
 
   while (1) {
     clear();
@@ -41,7 +56,6 @@ int main() {
 
     attron(COLOR_PAIR(3));
     mvprintw(0, 0, "%-*s", w, " Disk Usage Stats");
-    mvprintw(h + 1, 0, "%-*s", w, " Use arrow keys to navigate, 'q' to quit");
 
     if (focused >= offset + h) {
       offset = focused - h + 1;
@@ -60,6 +74,8 @@ int main() {
 
       attroff(COLOR_PAIR(idx == focused ? 1 : 2));
     }
+
+    controls(w, h);
 
     refresh();
 
