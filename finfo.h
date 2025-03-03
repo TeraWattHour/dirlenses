@@ -6,7 +6,7 @@
 
 struct finfo {
   char *name;
-  int size;
+  long long size;
   char *human_size;
   bool is_dir;
 };

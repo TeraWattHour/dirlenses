@@ -1,153 +1,27 @@
 #include <dirent.h>
-#include <errno.h>
 #include <ncurses.h>
 #include <pthread.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <limits.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 #include "finfo.h"
+#include "cache.h"
 
-#define ERROR(fmt, ...)                              \
-  {                                                  \
-    endwin();                                        \
-    fprintf(stderr, fmt __VA_OPT__(, ) __VA_ARGS__); \
-    exit(1);                                         \
-  }
-
-char *human_readable_kb(int kb) {
-  char *buffer = malloc(16);
-  if (kb < 1024) {
-    sprintf(buffer, "%dK", kb);
-  } else if (kb < 1024 * 1024) {
-    sprintf(buffer, "%dM", kb / 1024);
-  } else {
-    sprintf(buffer, "%dG", kb / (1024 * 1024));
-  }
-
-  return buffer;
-}
-
-static int offset = 0;
-static int focused = 0;
-
-static int n_files;
-static bool dir_empty;
-static struct finfo *files;
-static pthread_mutex_t mutex;
-
-void get_files() {
-  DIR *dir = opendir(".");
-  if (!dir)
-    ERROR("couldn't open the current directory\n");
-
-  n_files = 1;
-  int cap = 2;
-
-  files = realloc(files, cap * sizeof(struct finfo));
-  if (!files)
-    ERROR("malloc failed\n");
-
-  files[0] = (struct finfo){"..", 0, "", true};
-  files[1] = (struct finfo){"(empty)", 0, "", false};
-
-  struct stat *st = malloc(sizeof(struct stat));
-  if (!st)
-    ERROR("malloc failed\n");
-
-  struct dirent *entry;
-  while ((entry = readdir(dir))) {
-    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
-      continue;
-
-    if (n_files == cap) {
-      cap *= 2;
-      files = realloc(files, cap * sizeof(struct finfo));
-      if (!files)
-        ERROR("malloc failed\n");
-    }
-
-    files[n_files].name = strdup(entry->d_name);
-    files[n_files].is_dir = entry->d_type == DT_DIR;
-    if (entry->d_type == DT_DIR) {
-      files[n_files].size = 0;
-      files[n_files].human_size = "---";
-    } else {
-      if (stat(entry->d_name, st) != 0)
-        ERROR("couldn't get file stats, errno: %d\n", errno);
-
-      int kb = st->st_blocks / 2;
-      files[n_files].size = kb;
-      files[n_files].human_size = human_readable_kb(kb);
-    }
-
-    n_files++;
-  }
-
-  closedir(dir);
-  free(st);
-
-  // folder is actually empty, preserve the "(empty)" entry
-  if (n_files == 1) {
-    n_files = 2;
-    dir_empty = true;
-    return;
-  };
-
-  qsort(files + 2, n_files - 2, sizeof(struct finfo), finfo_by_name);
-
-  return;
-}
-
-void *get_disk_usage_stats(void *arg) {
-  pthread_mutex_lock(&mutex);
-  FILE *f = popen(
-      "find . -mindepth 1 -maxdepth 1 -print0 | xargs -0 du -sk 2>/dev/null",
-      "r");
-  if (!f)
-    ERROR("couldn't get disk usage stats\n");
-
-  char buffer[1024];
-  while (fgets(buffer, 1024, f)) {
-    int size = 0;
-    char filename[1024] = {0};
-
-    if (sscanf(buffer, "%d\t./%1023s", &size, filename) != 2) {
-      continue;
-    }
-
-    struct finfo *info = bsearch(
-        filename,
-        files + 2,
-        n_files - 2,
-        sizeof(struct finfo),
-        finfo_search_by_name);
-
-    if (info) {
-      info->human_size = human_readable_kb(size);
-      int i = info - files;
-      int idx = i + offset;
-
-      attron(COLOR_PAIR(idx == focused ? 1 : 2));
-
-      mvprintw(i + 1, 0, "%10s %s%s", files[idx].human_size, files[idx].name,
-               files[idx].is_dir ? "/" : "");
-
-      attroff(COLOR_PAIR(idx == focused ? 1 : 2));
-
-      refresh();
-    }
-  }
-
-  pclose(f);
-  pthread_mutex_unlock(&mutex);
+char *cwd() {
+  char cwd[PATH_MAX + 1];
+  getcwd(cwd, sizeof(cwd));
+  return strdup(cwd);
 }
 
 int main() {
-  pthread_t threads[2];
-  pthread_mutex_init(&mutex, NULL);
+  int offset = 0;
+  int focused = 0;
+
+  cache_init();
+
+  struct dir *dir = cache_add_dir(cwd());
+  dir_retrieve_entries(dir);
 
   initscr();
   noecho();
@@ -158,8 +32,6 @@ int main() {
   init_pair(1, COLOR_BLACK, COLOR_WHITE); // Highlighted
   init_pair(2, COLOR_WHITE, COLOR_BLACK); // Normal
   init_pair(3, COLOR_BLUE, COLOR_WHITE);  // Header
-
-  get_files();
 
   while (1) {
     clear();
@@ -177,8 +49,9 @@ int main() {
       offset = focused;
     }
 
-    for (int i = 0; i < h && i + offset < n_files; i++) {
-      int idx = i + offset;
+    for (int i = 0; i < h && i + offset < dir->count; i++) {
+      const struct finfo *files = dir->files;
+      const int idx = i + offset;
 
       attron(COLOR_PAIR(idx == focused ? 1 : 2));
 
@@ -192,28 +65,26 @@ int main() {
 
     switch (getch()) {
     case KEY_UP:
-      focused = focused > 0 ? focused - 1 : n_files - 1;
+      focused = focused > 0 ? focused - 1 : dir->count - 1;
       break;
     case KEY_DOWN:
-      focused = focused < n_files - 1 ? focused + 1 : 0;
+      focused = focused < dir->count - 1 ? focused + 1 : 0;
       break;
     case KEY_ENTER:
     case 10:
-      if (files[focused].is_dir) {
-        pthread_mutex_lock(&mutex);
+      if (dir->files[focused].is_dir) {
+        chdir(dir->files[focused].name);
 
-        chdir(files[focused].name);
-        get_files();
+        dir = cache_add_dir(cwd());
+        dir_retrieve_entries(dir);
 
         focused = 0;
         offset = 0;
-
-        pthread_mutex_unlock(&mutex);
       }
       break;
 
     case 's':
-      pthread_create(&threads[0], NULL, get_disk_usage_stats, NULL);
+      dir_du(dir);
       break;
 
     case 'q':
@@ -223,6 +94,5 @@ int main() {
   }
 
   endwin();
-  pthread_mutex_destroy(&mutex);
   return 0;
 }

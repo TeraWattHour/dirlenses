@@ -1,3 +1,6 @@
 main
 .DS_Store
 dirlenses
+.idea
+.vscode
+*.dSYM
