@@ -29,21 +29,20 @@ int dir_retrieve_entries(struct dir *dir) {
   if (count < 0) return errno;
 
   dir->count = count;
-  struct finfo *tmp = realloc(dir->files, sizeof(struct finfo) * dir->count);
-  if (tmp == NULL) return errno;
-  dir->files = tmp;
+  dir->files = realloc(dir->files, sizeof(struct finfo) * dir->count);
+  if (!dir->files) ERROR("realloc failed with error code %d\n", errno);
 
   struct stat *st = malloc(sizeof(struct stat));
 
   int j = 0;
   for (int i = 0; i < count; i++) {
-    struct dirent *entry = entries[i];
+    const struct dirent *entry = entries[i];
     dir->files[j].name = strdup(entry->d_name);
     dir->files[j].is_dir = entry->d_type == DT_DIR;
     if (!dir->files[j].is_dir) {
 
-      // TODO: handle errors
-      stat(entry->d_name, st) != 0;
+      if (stat(entry->d_name, st) != 0)
+        ERROR("couldn't get file statistics for file %s\n", entry->d_name);
 
       const long long kb = st->st_blocks / 2;
       dir->files[j].size = kb;
@@ -64,16 +63,21 @@ int dir_retrieve_entries(struct dir *dir) {
   return 0;
 }
 
-void *dir_du_(void *arg) {
-  struct dir *dir = arg;
+void *wrapped_dir_du(void *arg) {
+  const struct dir_with_render *dwr = arg;
+  dir_du(dwr->dir, dwr->render);
+  free(arg);
+  return NULL;
+}
 
+void dir_du(struct dir *dir, void (*rerender)()) {
   pthread_mutex_lock(&dir->lock);
 
   FILE *f = popen(
     "find . -mindepth 1 -maxdepth 1 -print0 | xargs -0 du -sk 2>/dev/null",
     "r"
   );
-  // if (!f) ERROR("couldn't get disk usage stats\n");
+  if (!f) ERROR("couldn't get disk usage stats\n");
 
   char buffer[1024];
   while (fgets(buffer, 1024, f)) {
@@ -92,27 +96,11 @@ void *dir_du_(void *arg) {
 
     if (info) {
       info->human_size = human_readable_kb(size);
-      // int i = info - files;
-      // int idx = i + offset;
-      //
-      // attron(COLOR_PAIR(idx == focused ? 1 : 2));
-      //
-      // mvprintw(i + 1, 0, "%10s %s%s", files[idx].human_size, files[idx].name,
-      //          files[idx].is_dir ? "/" : "");
-      //
-      // attroff(COLOR_PAIR(idx == focused ? 1 : 2));
-      //
-      // refresh();
+      rerender();
     }
   }
 
   pclose(f);
   pthread_mutex_unlock(&dir->lock);
-  return NULL;
-}
-
-void dir_du(struct dir *dir) {
-  static pthread_t thread;
-  pthread_create(&thread, NULL, dir_du_, dir);
 }
 

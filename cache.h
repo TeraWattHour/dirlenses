@@ -13,6 +13,7 @@ struct cache {
 };
 
 struct dir {
+  pthread_cond_t render;
   pthread_mutex_t lock;
   char *name;
   struct finfo *files;
